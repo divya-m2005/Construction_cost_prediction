@@ -1,10 +1,15 @@
 import React, { useEffect, useRef } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
-/**
- * MapView - renders a Leaflet map with the predicted project location.
- * Requires: npm install react-leaflet leaflet
- * Add to index.html: <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
- */
+// Fix default marker icons
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: require("leaflet/dist/images/marker-icon-2x.png"),
+  iconUrl: require("leaflet/dist/images/marker-icon.png"),
+  shadowUrl: require("leaflet/dist/images/marker-shadow.png"),
+});
+
 function MapView({ latitude, longitude, predictedCost, projectType }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -18,50 +23,27 @@ function MapView({ latitude, longitude, predictedCost, projectType }) {
 
   useEffect(() => {
     if (!latitude || !longitude) return;
+    if (!mapRef.current) return;
 
-    // Dynamically load Leaflet to avoid SSR issues
-    const L = window.L;
-    if (!L) {
-      console.warn("Leaflet not loaded. Add CDN link to public/index.html");
-      return;
-    }
-
-    // Destroy previous instance
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
       mapInstanceRef.current = null;
     }
 
-    if (!mapRef.current) return;
-
-    // Initialize map
     const map = L.map(mapRef.current).setView([latitude, longitude], 13);
     mapInstanceRef.current = map;
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      attribution: "© OpenStreetMap",
       maxZoom: 19,
     }).addTo(map);
 
-    // Custom icon
     const icon = L.divIcon({
       className: "",
-      html: `
-        <div style="
-          background: linear-gradient(135deg, #1e3a5f, #2563eb);
-          color: white;
-          padding: 6px 10px;
-          border-radius: 8px;
-          font-size: 12px;
-          font-weight: bold;
-          white-space: nowrap;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-          border: 2px solid white;
-        ">
-          🏗️ ${projectType || "Project"}<br/>
-          <span style="font-size: 11px">${formatCurrency(predictedCost)}</span>
-        </div>
-      `,
+      html: `<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:bold;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:2px solid white;">
+        🏗️ ${projectType || "Project"}<br/>
+        <span style="font-size:11px">${formatCurrency(predictedCost)}</span>
+      </div>`,
       iconAnchor: [60, 40],
     });
 
@@ -70,12 +52,11 @@ function MapView({ latitude, longitude, predictedCost, projectType }) {
       .bindPopup(
         `<b>Construction Project</b><br/>
          Type: ${projectType || "N/A"}<br/>
-         Estimated Cost: ${formatCurrency(predictedCost)}<br/>
-         Coordinates: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+         Cost: ${formatCurrency(predictedCost)}<br/>
+         Lat/Lng: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
       )
       .openPopup();
 
-    // Add circle to show approximate area of effect
     L.circle([latitude, longitude], {
       radius: 500,
       color: "#2563eb",

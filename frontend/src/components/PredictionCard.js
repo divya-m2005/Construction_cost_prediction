@@ -1,7 +1,12 @@
 import React from "react";
 
-const formatCurrency = (val) =>
+const USD_TO_INR = 83.5;
+
+const formatUSD = (val) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(val);
+
+const formatINR = (val) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val * USD_TO_INR);
 
 const formatPercent = (val) => `${(val * 100).toFixed(0)}%`;
 
@@ -26,7 +31,10 @@ function BreakdownBar({ label, value, total, color }) {
     <div style={{ marginBottom: "10px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "3px" }}>
         <span style={{ color: "#4b5563" }}>{label}</span>
-        <span style={{ fontWeight: "600", color: "#1f2937" }}>{formatCurrency(value)}</span>
+        <div style={{ textAlign: "right" }}>
+          <span style={{ fontWeight: "600", color: "#1f2937" }}>{formatUSD(value)}</span>
+          <span style={{ fontSize: "11px", color: "#6b7280", marginLeft: "6px" }}>({formatINR(value)})</span>
+        </div>
       </div>
       <div style={{ height: "6px", background: "#f3f4f6", borderRadius: "3px" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: "3px" }} />
@@ -55,6 +63,7 @@ function PredictionCard({ result }) {
 
   return (
     <div style={{ fontFamily: "'Segoe UI', sans-serif" }}>
+
       {/* Main Cost Display */}
       <div style={{
         background: "linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)",
@@ -65,14 +74,32 @@ function PredictionCard({ result }) {
         marginBottom: "20px",
         boxShadow: "0 4px 20px rgba(37,99,235,0.35)"
       }}>
-        <p style={{ fontSize: "13px", opacity: 0.8, marginBottom: "6px", letterSpacing: "1px", textTransform: "uppercase" }}>
+        <p style={{ fontSize: "25px", opacity: 0.8, marginBottom: "10px", letterSpacing: "1px", textTransform: "uppercase" }}>
           Estimated Construction Cost
         </p>
-        <h2 style={{ fontSize: "38px", fontWeight: "800", margin: "0 0 6px" }}>
-          {formatCurrency(predicted_cost)}
+
+        {/* US Dollars */}
+        <p style={{ fontSize: "20px", opacity: 0.7, letterSpacing: "1px", marginBottom: "2px" }}>
+          🇺🇸 US DOLLARS
+        </p>
+        <h2 style={{ fontSize: "38px", fontWeight: "800", margin: "0 0 4px" }}>
+          {formatUSD(predicted_cost)}
         </h2>
-        <p style={{ fontSize: "15px", opacity: 0.85 }}>
-          {formatCurrency(cost_per_sqft)} per sq ft
+        <p style={{ fontSize: "13px", opacity: 0.7, marginBottom: "6px" }}>
+          {formatUSD(cost_per_sqft)} per sq ft
+        </p>
+
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.2)", margin: "10px 0" }} />
+
+        {/* Indian Rupees */}
+        <p style={{ fontSize: "20px", color: "#fbbf24", letterSpacing: "1px", marginBottom: "2px" }}>
+          🇮🇳 INDIAN RUPEES
+        </p>
+        <p style={{ fontSize: "38px", fontWeight: "800", color: "#fbbf24", margin: "0 0 4px"}}>
+          {formatINR(predicted_cost)}
+        </p>
+        <p style={{ fontSize: "13px", color: "#fbbf24", opacity: 0.85 }}>
+          {formatINR(cost_per_sqft)} per sq ft
         </p>
       </div>
 
@@ -89,12 +116,14 @@ function PredictionCard({ result }) {
       }}>
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: "11px", color: "#64748b", marginBottom: "3px" }}>LOW ESTIMATE</p>
-          <p style={{ fontSize: "17px", fontWeight: "700", color: "#16a34a" }}>{formatCurrency(cost_range_low)}</p>
+          <p style={{ fontSize: "15px", fontWeight: "700", color: "#16a34a" }}>{formatUSD(cost_range_low)}</p>
+          <p style={{ fontSize: "12px", color: "#16a34a" }}>{formatINR(cost_range_low)}</p>
         </div>
         <div style={{ fontSize: "20px", color: "#94a3b8" }}>↔</div>
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: "11px", color: "#64748b", marginBottom: "3px" }}>HIGH ESTIMATE</p>
-          <p style={{ fontSize: "17px", fontWeight: "700", color: "#dc2626" }}>{formatCurrency(cost_range_high)}</p>
+          <p style={{ fontSize: "15px", fontWeight: "700", color: "#dc2626" }}>{formatUSD(cost_range_high)}</p>
+          <p style={{ fontSize: "12px", color: "#dc2626" }}>{formatINR(cost_range_high)}</p>
         </div>
       </div>
 
@@ -131,7 +160,8 @@ function PredictionCard({ result }) {
           {recommendations.map((rec, i) => (
             <div key={i} style={{
               display: "flex", gap: "8px", alignItems: "flex-start",
-              fontSize: "13px", color: "#78350f", marginBottom: i < recommendations.length - 1 ? "8px" : "0"
+              fontSize: "13px", color: "#78350f",
+              marginBottom: i < recommendations.length - 1 ? "8px" : "0"
             }}>
               <span style={{ flexShrink: 0 }}>•</span>
               <span>{rec}</span>
@@ -139,6 +169,7 @@ function PredictionCard({ result }) {
           ))}
         </div>
       )}
+
     </div>
   );
 }
