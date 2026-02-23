@@ -1,6 +1,7 @@
 import os
 import pickle
 import numpy as np
+import math
 from pathlib import Path
 
 MODEL_DIR = Path(__file__).parent / "app" / "saved_model"
@@ -100,7 +101,68 @@ def get_recommendations(data, predicted_cost: float) -> list:
     return recommendations
 
 
+def detect_anomalies(data, predicted_cost: float, cost_per_sqft: float) -> list[str]:
+    anomalies = []
+    
+    # Anomaly 1: Cost extremes relative to quality
+    if data.quality_grade == "economy" and cost_per_sqft > 200:
+        anomalies.append("High cost detected for economy grade specifications.")
+    if data.quality_grade == "luxury" and cost_per_sqft < 150:
+        anomalies.append("Unusually low cost for luxury grade specifications.")
+        
+    # Anomaly 2: Structural complexity
+    if data.num_floors > 10:
+        anomalies.append("High floor count may require specialized structural engineering not fully captured.")
+        
+    # Anomaly 3: Area/Cost ratio
+    if data.area_sqft < 100:
+        anomalies.append("Micro-project area may result in skewed per-sqft metrics.")
+        
+    return anomalies
+
+
+def generate_explanation(data, predicted_cost: float, cost_per_sqft: float) -> str:
+    quality = getattr(data.quality_grade, 'value', data.quality_grade)
+    zone = getattr(data.location_zone, 'value', data.location_zone)
+    
+    explanation = f"The estimated cost of {predicted_cost:,.2f} is primarily driven by "
+    explanation += f"the {quality} quality standards in a {zone} zone. "
+    explanation += f"At {cost_per_sqft:,.2f} per sqft, this includes structural work, finishes, and MEP systems."
+    
+    if data.has_basement:
+        explanation += " The inclusion of a basement adds approximately 12% to the total budget."
+        
+    return explanation
+
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """Calculate the great circle distance between two points in km."""
+    R = 6371.0  # Earth radius in km
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
 def predict_cost(data, model, scaler, label_encoders) -> dict:
+    # Reference city center (Mumbai: 19.076, 72.877)
+    CITY_CENTER = (19.076, 72.877)
+
+    # Dynamic adjustment based on Map Coordinates
+    if data.latitude is not None and data.longitude is not None:
+        dist = calculate_distance(data.latitude, data.longitude, CITY_CENTER[0], CITY_CENTER[1])
+        # Update distance if coordinates are provided
+        data.distance_to_city_center = round(dist, 2)
+        
+        # Determine zone based on distance
+        if dist < 12:
+            data.location_zone = "urban"
+        elif dist < 35:
+            data.location_zone = "suburban"
+        else:
+            data.location_zone = "rural"
+
     quality = getattr(data.quality_grade, 'value', data.quality_grade)
     zone = getattr(data.location_zone, 'value', data.location_zone)
     wall = getattr(data.wall_material, 'value', data.wall_material)
@@ -121,7 +183,10 @@ def predict_cost(data, model, scaler, label_encoders) -> dict:
             cost_per_sqft *= 1.12
         if data.has_parking:
             cost_per_sqft *= 1.06
-        predicted_cost = cost_per_sqft * data.area_sqft * data.num_floors
+        
+        # Fallback distance factor (matching train_model.py logic: -200 per km)
+        # We adjust the total cost by -200 * distance
+        predicted_cost = (cost_per_sqft * data.area_sqft * data.num_floors) - (data.distance_to_city_center * 200)
         confidence = 0.72
     else:
         features = encode_input(data, label_encoders)
@@ -140,5 +205,133 @@ def predict_cost(data, model, scaler, label_encoders) -> dict:
         "cost_range_high": round(predicted_cost + margin, 2),
         "confidence_score": confidence,
         "breakdown": get_cost_breakdown(predicted_cost, data),
-        "recommendations": get_recommendations(data, predicted_cost)
+        "recommendations": get_recommendations(data, predicted_cost),
+        "anomalies": detect_anomalies(data, predicted_cost, cost_per_sqft),
+        "explanation": generate_explanation(data, predicted_cost, cost_per_sqft),
+        "derived_distance": data.distance_to_city_center,
+        "derived_zone": data.location_zone
     }
+
+
+def get_cost_trend():
+    import random
+    months = ["Mar 24", "Apr 24", "May 24", "Jun 24", "Jul 24", "Aug 24", "Sep 24", "Oct 24", "Nov 24", "Dec 24", "Jan 25", "Feb 25"]
+    
+    def generate_trend(base, volatility, trend_up=True):
+        data = []
+        current = base
+        for m in months:
+            change = random.uniform(-volatility, volatility)
+            if trend_up:
+                change += 0.5 # Slight upward trend
+            current += change
+            data.append({"month": m, "index": round(current, 2)})
+        return data
+
+    return {
+        "cement": generate_trend(100, 2),
+        "steel": generate_trend(100, 5),
+        "brick": generate_trend(100, 1.5, trend_up=False), # Bricks might be stabilizing
+        "overall": generate_trend(100, 1)
+    }
+
+
+def optimize_budget(data, model, scaler, label_encoders):
+    target = data.budget
+    suggestions = []
+    
+    # Simple heuristic search
+    grades = ["economy", "standard", "premium", "luxury"]
+    floor_options = [1, 2, 3, 5]
+    
+    for grade in grades:
+        for floors in floor_options:
+            # Estimate area based on budget
+            # Cost = Area * Floors * Rate
+            # Area = Cost / (Floors * Rate)
+            
+            # Rough rate estimate for inverse calculation
+            base_rate = {"economy": 1000, "standard": 1800, "premium": 2800, "luxury": 4500}[grade]
+            estimated_area = target / (floors * base_rate)
+            
+            if estimated_area < 500: continue
+            if estimated_area > 50000: continue
+            
+            # Refine prediction with the actual model logic
+            from schemas import PredictionInput
+            test_input = PredictionInput(
+                area_sqft=round(estimated_area, -1),
+                num_floors=floors,
+                project_type=data.project_type,
+                location_zone=data.location_zone,
+                foundation_type="slab",
+                wall_material="brick",
+                roof_type="gable",
+                has_basement=False,
+                has_parking=True,
+                quality_grade=grade,
+                soil_type="loamy",
+                distance_to_city_center=10.0
+            )
+            
+            res = predict_cost(test_input, model, scaler, label_encoders)
+            cost = res["predicted_cost"]
+            
+            if cost <= target * 1.1: # Allow 10% tolerance for suggestions
+                suggestions.append({
+                    "area_sqft": test_input.area_sqft,
+                    "num_floors": test_input.num_floors,
+                    "quality_grade": grade,
+                    "estimated_cost": cost
+                })
+    
+    # Sort by closeness to budget without going over too much
+    suggestions.sort(key=lambda x: abs(x["estimated_cost"] - target))
+    return {"suggestions": suggestions[:3]}
+
+
+
+def parse_natural_language(query: str) -> dict:
+    import re
+    query = query.lower()
+    
+    # Defaults
+    result = {
+        "area_sqft": 2000,
+        "num_floors": 2,
+        "project_type": "residential",
+        "location_zone": "suburban",
+        "quality_grade": "standard"
+    }
+    
+    # Extract Area
+    area_match = re.search(r"(\d+)\s*(sqft|sq\s*ft|square\s*feet|feet)", query)
+    if area_match:
+        result["area_sqft"] = int(area_match.group(1))
+    
+    # Extract Floors
+    floor_match = re.search(r"(\d+)\s*(floor|floors|story|stories|storey)", query)
+    if floor_match:
+        result["num_floors"] = int(floor_match.group(1))
+    
+    # Extract Quality
+    if "economy" in query or "cheap" in query or "low cost" in query:
+        result["quality_grade"] = "economy"
+    elif "premium" in query or "high" in query:
+        result["quality_grade"] = "premium"
+    elif "luxury" in query or "elite" in query:
+        result["quality_grade"] = "luxury"
+        
+    # Extract Zone
+    if "urban" in query or "city" in query or "center" in query:
+        result["location_zone"] = "urban"
+    elif "rural" in query or "village" in query or "outskirts" in query:
+        result["location_zone"] = "rural"
+        
+    # Extract Project Type
+    if "commercial" in query or "office" in query or "shop" in query:
+        result["project_type"] = "commercial"
+    elif "industrial" in query or "factory" in query:
+        result["project_type"] = "industrial"
+        
+    return result

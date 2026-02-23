@@ -27,3 +27,37 @@ class PredictionOutput(BaseModel):
     confidence_score: float
     breakdown: dict
     recommendations: list
+    anomalies: list[str]
+    explanation: str
+    derived_distance: Optional[float] = None
+    derived_zone: Optional[str] = None
+
+
+
+class TrendData(BaseModel):
+    month: str
+    index: float
+
+
+class TrendOutput(BaseModel):
+    cement: list[TrendData]
+    steel: list[TrendData]
+    brick: list[TrendData]
+    overall: list[TrendData]
+
+
+class OptimizeInput(BaseModel):
+    budget: float
+    project_type: str = "residential"
+    location_zone: str = "suburban"
+
+
+class ProjectConfig(BaseModel):
+    area_sqft: float
+    num_floors: int
+    quality_grade: str
+    estimated_cost: float
+
+
+class OptimizeOutput(BaseModel):
+    suggestions: list[ProjectConfig]

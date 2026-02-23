@@ -39,7 +39,7 @@
 //   if (!response.ok) throw new Error("API health check failed");
 //   return response.json();
 // };
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "http://localhost:8000";
 
 export const getPrediction = async (formData) => {
   const payload = {
@@ -85,5 +85,11 @@ export const getFeatureImportance = async () => {
 export const checkHealth = async () => {
   const response = await fetch(`${API_BASE_URL}/health`);
   if (!response.ok) throw new Error("API health check failed");
+  return response.json();
+};
+
+export const getTrends = async () => {
+  const response = await fetch(`${API_BASE_URL}/analytics/trend`);
+  if (!response.ok) throw new Error("Failed to fetch trend data");
   return response.json();
 };

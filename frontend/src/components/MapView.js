@@ -1,103 +1,91 @@
-import React, { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
-// Fix default marker icons
+// Fix Leaflet marker icons
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require("leaflet/dist/images/marker-icon-2x.png"),
-  iconUrl: require("leaflet/dist/images/marker-icon.png"),
-  shadowUrl: require("leaflet/dist/images/marker-shadow.png"),
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-function MapView({ latitude, longitude, predictedCost, projectType }) {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
+// Custom icon for selected location
+const selectedIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
 
-  const formatCurrency = (val) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(val);
+// Component to handle map clicks
+function MapEvents({ onLocationSelect }) {
+  useMapEvents({
+    click(e) {
+      onLocationSelect(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+// Component to update map center
+function ChangeView({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.setView(center, map.getZoom());
+    }
+  }, [center, map]);
+  return null;
+}
+
+const MapView = ({ latitude, longitude, predictedCost, projectType, onLocationSelect, isDark }) => {
+  const [position, setPosition] = useState([19.076, 72.877]); // Default to Mumbai
 
   useEffect(() => {
-    if (!latitude || !longitude) return;
-    if (!mapRef.current) return;
-
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
+    if (latitude && longitude) {
+      setPosition([latitude, longitude]);
     }
+  }, [latitude, longitude]);
 
-    const map = L.map(mapRef.current).setView([latitude, longitude], 13);
-    mapInstanceRef.current = map;
+  const tileUrl = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap",
-      maxZoom: 19,
-    }).addTo(map);
-
-    const icon = L.divIcon({
-      className: "",
-      html: `<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:bold;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:2px solid white;">
-        🏗️ ${projectType || "Project"}<br/>
-        <span style="font-size:11px">${formatCurrency(predictedCost)}</span>
-      </div>`,
-      iconAnchor: [60, 40],
-    });
-
-    L.marker([latitude, longitude], { icon })
-      .addTo(map)
-      .bindPopup(
-        `<b>Construction Project</b><br/>
-         Type: ${projectType || "N/A"}<br/>
-         Cost: ${formatCurrency(predictedCost)}<br/>
-         Lat/Lng: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-      )
-      .openPopup();
-
-    L.circle([latitude, longitude], {
-      radius: 500,
-      color: "#2563eb",
-      fillColor: "#3b82f6",
-      fillOpacity: 0.15,
-      weight: 2,
-    }).addTo(map);
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, [latitude, longitude, predictedCost, projectType]);
-
-  if (!latitude || !longitude) {
-    return (
-      <div style={{
-        height: "300px",
-        background: "#f8fafc",
-        border: "2px dashed #e2e8f0",
-        borderRadius: "12px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#94a3b8",
-      }}>
-        <div style={{ fontSize: "36px", marginBottom: "8px" }}>🗺️</div>
-        <p style={{ fontSize: "14px", fontWeight: "600" }}>Map View</p>
-        <p style={{ fontSize: "12px" }}>Enter latitude & longitude to see project location</p>
-      </div>
-    );
-  }
+  const attribution = isDark
+    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
   return (
-    <div style={{ borderRadius: "12px", overflow: "hidden", border: "1px solid #e2e8f0" }}>
-      <div ref={mapRef} style={{ height: "350px", width: "100%" }} />
+    <div style={{ height: '400px', width: '100%', borderRadius: '16px', overflow: 'hidden', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
+      <MapContainer center={position} zoom={11} style={{ height: '100%', width: '100%' }}>
+        <ChangeView center={position} />
+        <TileLayer url={tileUrl} attribution={attribution} />
+        <MapEvents onLocationSelect={handleSelect} />
+        {latitude && longitude && (
+          <Marker position={[latitude, longitude]} icon={selectedIcon}>
+            <Popup>
+              <div style={{ textAlign: 'center', color: '#1e293b' }}>
+                <strong style={{ textTransform: 'capitalize' }}>{projectType || 'Project'} Site</strong><br />
+                {predictedCost ? (
+                  <span style={{ color: '#2563eb', fontWeight: 'bold' }}>
+                    Est: INR {(predictedCost * 83.5).toLocaleString()}
+                  </span>
+                ) : 'Selected Location'}
+              </div>
+            </Popup>
+          </Marker>
+        )}
+      </MapContainer>
     </div>
   );
-}
+
+  function handleSelect(lat, lng) {
+    onLocationSelect(lat, lng);
+  }
+};
 
 export default MapView;

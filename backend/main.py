@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from schemas import PredictionInput, PredictionOutput
-from model import load_model, predict_cost
+from schemas import PredictionInput, PredictionOutput, TrendOutput, OptimizeInput, OptimizeOutput
+from model import load_model, predict_cost, get_cost_trend, optimize_budget
 import uvicorn
 
 app = FastAPI(
@@ -10,10 +10,19 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS for React frontend
+# CORS for React frontend - Broadened for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000","http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,5 +68,31 @@ def feature_importance():
     return {"message": "Feature importance not available for this model"}
 
 
+@app.get("/analytics/trend", response_model=TrendOutput)
+def trend_forecasting():
+    try:
+        return get_cost_trend()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ai/parse-intent")
+def parse_intent(data: dict):
+    from model import parse_natural_language
+    query = data.get("query", "")
+    parsed = parse_natural_language(query)
+    return {"auto_fill": parsed}
+
+
+
+@app.post("/analytics/optimize", response_model=OptimizeOutput)
+def budget_optimizer(data: OptimizeInput):
+    try:
+        # Pass the global model, scaler, and encoders
+        return optimize_budget(data, model, scaler, label_encoders)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
